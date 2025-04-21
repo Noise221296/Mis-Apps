@@ -25,6 +25,22 @@ except FileNotFoundError:
         key_file.write(SECRET_KEY)
 cipher_suite = Fernet(SECRET_KEY)
 
+# Verificar si ya hay una instancia en ejecución
+LOCK_FILE = "program_lock.lock"
+
+def check_single_instance():
+    if os.path.exists(LOCK_FILE):
+        print("Ya hay una instancia en ejecución.")
+        sys.exit(0)  # Salir si ya hay una instancia
+    else:
+        # Crear el archivo de bloqueo
+        with open(LOCK_FILE, "w") as lock:
+            lock.write(str(os.getpid()))
+
+def remove_lock_file():
+    if os.path.exists(LOCK_FILE):
+        os.remove(LOCK_FILE)
+
 class EditConfigurationDialog(QDialog):
     def __init__(self, configuration, parent=None):
         super().__init__(parent)
@@ -32,33 +48,28 @@ class EditConfigurationDialog(QDialog):
         self.setFixedSize(400, 300)
         self.configuration = configuration
         layout = QVBoxLayout()
-
         # Hora
         self.time_edit = QTimeEdit()
         self.time_edit.setDisplayFormat("HH:mm")
         self.time_edit.setTime(QTime.fromString(configuration["time"], "HH:mm"))
         layout.addWidget(QLabel("Hora:"))
         layout.addWidget(self.time_edit)
-
         # IPs
         self.ip_input = QLineEdit(", ".join(configuration["ips"]))
         layout.addWidget(QLabel("Direcciones IP (separadas por comas):"))
         layout.addWidget(self.ip_input)
-
         # Intentos
         self.attempts_input = QSpinBox()
         self.attempts_input.setMinimum(1)
         self.attempts_input.setValue(configuration["attempts"])
         layout.addWidget(QLabel("Intentos:"))
         layout.addWidget(self.attempts_input)
-
         # Intervalo
         self.interval_input = QSpinBox()
         self.interval_input.setMinimum(1)
         self.interval_input.setValue(configuration["interval"])
         layout.addWidget(QLabel("Intervalo (segundos):"))
         layout.addWidget(self.interval_input)
-
         # Día
         self.day_combo = QComboBox()
         self.day_combo.addItem("Todos los días")
@@ -66,12 +77,10 @@ class EditConfigurationDialog(QDialog):
         self.day_combo.setCurrentText(configuration["day"])
         layout.addWidget(QLabel("Día:"))
         layout.addWidget(self.day_combo)
-
         # Botón Guardar
         self.save_button = QPushButton("Guardar Cambios")
         self.save_button.clicked.connect(self.accept)
         layout.addWidget(self.save_button)
-
         self.setLayout(layout)
 
     def get_configuration(self):
@@ -90,6 +99,13 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.setWindowTitle("Monitoreo y Reinicio Automático")
         self.setGeometry(100, 100, 800, 600)
+
+        # Establecer el ícono de la ventana
+        icon_path = "Reiniciar.png"  # Asegúrate de que este archivo exista en el directorio
+        if os.path.exists(icon_path):
+            self.setWindowIcon(QIcon(icon_path))
+        else:
+            print(f"No se encontró el ícono en la ruta: {icon_path}")
 
         # Historial de eventos y gráficos
         self.event_log = []
@@ -131,36 +147,30 @@ class MainWindow(QMainWindow):
         self.time_edit.setToolTip("Selecciona la hora para el monitoreo.")
         config_form_layout.addWidget(QLabel("Hora:"))
         config_form_layout.addWidget(self.time_edit)
-
         self.ip_input = QLineEdit()
         self.ip_input.setToolTip("Ingresa las direcciones IP separadas por comas (por ejemplo, 192.168.1.1, 8.8.8.8).")
         config_form_layout.addWidget(QLabel("Direcciones IP:"))
         config_form_layout.addWidget(self.ip_input)
-
         self.attempts_input = QSpinBox()
         self.attempts_input.setMinimum(1)
         self.attempts_input.setToolTip("Número de intentos antes de reiniciar.")
         config_form_layout.addWidget(QLabel("Intentos:"))
         config_form_layout.addWidget(self.attempts_input)
-
         self.interval_input = QSpinBox()
         self.interval_input.setMinimum(1)
         self.interval_input.setToolTip("Intervalo entre intentos (en segundos).")
         config_form_layout.addWidget(QLabel("Intervalo (segundos):"))
         config_form_layout.addWidget(self.interval_input)
-
         self.day_combo = QComboBox()
         self.day_combo.addItem("Todos los días")
         self.day_combo.addItems(["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado", "Domingo"])
         self.day_combo.setToolTip("Selecciona el día para el monitoreo.")
         config_form_layout.addWidget(QLabel("Día:"))
         config_form_layout.addWidget(self.day_combo)
-
         add_button = QPushButton("Agregar Configuración")
         add_button.setToolTip("Haz clic aquí para agregar una nueva configuración.")
         add_button.clicked.connect(self.add_configuration)
         config_form_layout.addWidget(add_button)
-
         config_layout.addLayout(config_form_layout)
 
         # Table to display configurations
@@ -176,12 +186,10 @@ class MainWindow(QMainWindow):
         delete_button.setToolTip("Haz clic aquí para eliminar la configuración seleccionada.")
         delete_button.clicked.connect(self.delete_configuration)
         buttons_layout.addWidget(delete_button)
-
         edit_button = QPushButton("Editar Configuración")
         edit_button.setToolTip("Haz clic aquí para editar la configuración seleccionada.")
         edit_button.clicked.connect(self.edit_configuration)
         buttons_layout.addWidget(edit_button)
-
         config_layout.addLayout(buttons_layout)
 
         # Start Monitoring Button
@@ -207,7 +215,6 @@ class MainWindow(QMainWindow):
         history_layout = QVBoxLayout()
         history_tab.setLayout(history_layout)
         tab_widget.addTab(history_tab, "Historial de Eventos")
-
         self.event_log_text = QTextEdit()
         self.event_log_text.setReadOnly(True)
         history_layout.addWidget(self.event_log_text)
@@ -217,7 +224,6 @@ class MainWindow(QMainWindow):
         graph_layout = QVBoxLayout()
         graph_tab.setLayout(graph_layout)
         tab_widget.addTab(graph_tab, "Gráfico de Monitoreo")
-
         self.figure = plt.figure()
         self.canvas = FigureCanvas(self.figure)
         graph_layout.addWidget(self.canvas)
@@ -471,10 +477,18 @@ class MainWindow(QMainWindow):
         """Muestra la información del desarrollador."""
         QMessageBox.about(self, "Acerca de", "Desarrollado por Alejandro Peña Basulto\n"
                                             "Versión 1.0\n"
-                                            "Contacto: tu@email.com")
+                                            "Contacto: penabasulto@gmail.com")
+
 
 if __name__ == "__main__":
+    # Verificar si ya hay una instancia en ejecución
+    check_single_instance()
+
     app = QApplication(sys.argv)
     main_window = MainWindow()
     main_window.show()
+
+    # Al cerrar la aplicación, eliminar el archivo de bloqueo
+    app.aboutToQuit.connect(remove_lock_file)
+
     sys.exit(app.exec_())
